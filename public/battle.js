@@ -7,7 +7,7 @@ var app3 = new Vue({
         supplyRemain: [12,12,12,12,12,12,12,12,12,12],
         cardArray: [],
         lens: [],//lengths of each expansions
-        language: 0,
+        la: 'ch',
         binded: 0,
         username: username,
         myCardLength: 0,
@@ -19,27 +19,30 @@ var app3 = new Vue({
         nowBuy: 0,
         nowAction: 0,
         nowCard: 0,
+        nowDuration: 0,
         nowStage: 'Action',
         otherName: [],
         otherCard: [],
         otherDrop: [],
         otherPoint: [3,3,3,3,3],
+        otherDuration: [[],[],[],[],[]],
         trash: [],
         nowPlayer: "",
         otherIndex: 10,
         modal_title: '',
         modal_content: '',
-        modal_amount: 0,
+        modal_min: 0,
+        modal_max: '',
         modal_cards: [],
-        modal_from: '',
-        modal_cost: '',
-        modal_choices: [],
+        modal_area: '',
+        modal_filter: [],
         aCardUsing: false,
+        asking: false,
+        freshed: false,
     },
     created: function(){
     },
     methods: {
-        name: app2.name,
         filename: app2.filename,
         title: app2.title,
         description: app2.description,
@@ -53,18 +56,21 @@ var app3 = new Vue({
             this.binded = $(".cards").length;
         },
         use: (index) => {
-            if(!app3.nowPlayer === username){
+            if(!app3.nowPlayer === username
+            && !app3.asking){
               return;
             }
             // choosing card
-            if(app3.aCardUsing && (app3.modal_from === 'hand')){
-                if(!app3.myHand[index].chosen){
-                  app3.modal_cards.push(index);
-                  app3.myHand[index].chosen = true;
-              }
-              else{
-                  app3.modal_cards.splice(app3.modal_cards.indexOf(index),1);
-                  app3.myHand[index].chosen = false;
+            if(app3.asking){
+              if((app3.modal_area === 'hand')){
+                  if(!app3.myHand[index].chosen){
+                    app3.modal_cards.push(index);
+                    app3.myHand[index].chosen = true;
+                }
+                else{
+                    app3.modal_cards.splice(app3.modal_cards.indexOf(index),1);
+                    app3.myHand[index].chosen = false;
+                }
               }
             }
             //using card
@@ -73,25 +79,28 @@ var app3 = new Vue({
             }
         },
         buy: (index,src) => {
-            if(!app3.nowPlayer === username){
+            if(!app3.nowPlayer === username
+            && !app3.asking){
               return;
             }
             // choosing card
-            if(app3.aCardUsing && (app3.modal_from === 'kingdom' || app3.modal_from === 'supply' || app3.modal_from === 'basic'
-            && app3[src][index].cost <= app3.modal_cost)){
-                if(!app3[src][index].chosen){
-                  app3.modal_cards.push({index:index,src:src});
-                  app3[src][index].chosen = true;
-                }
-                else{
-                  for(let i = app3.modal_cards.length - 1; i >= 0; i -= 1){
-                      if(app3.modal_cards[i].index === index
-                      && app3.modal_cards[i].src === src ){
-                        app3.modal_cards.splice(i,1);
-                        break;
-                      }
+            if(app3.asking){
+              if((app3.modal_area === 'kingdom' || app3.modal_area === 'supply' || app3.modal_area === 'basic'
+              && app3.modal_filter[src][index])){
+                  if(!app3[src][index].chosen){
+                    app3.modal_cards.push({index:index,src:src});
+                    app3[src][index].chosen = true;
                   }
-                  app3[src][index].chosen = false;
+                  else{
+                    for(let i = app3.modal_cards.length - 1; i >= 0; i -= 1){
+                        if(app3.modal_cards[i].index === index
+                        && app3.modal_cards[i].src === src ){
+                          app3.modal_cards.splice(i,1);
+                          break;
+                        }
+                    }
+                    app3[src][index].chosen = false;
+                }
               }
             }
             //buying card
@@ -103,25 +112,28 @@ var app3 = new Vue({
             }
         },
         nextStage: () => {
-            if(app3.nowPlayer === username)
+            if(app3.nowPlayer === username && !app3.freshed){
                 socket.emit('nextStage');
+                app3.freshed = true;
+            }
         },
         sendAnswer: (select)=>{
-          if(app3.modal_from === 'yn'){
+          app3.asking = false;
+          if(app3.modal_area === 'yn'){
             socket.emit('answer',select);
           }
-          else if(app3.modal_from === 'check'){
+          else if(app3.modal_area === 'check'){
               $(".panel-body").find("input[type ='checkbox']").each(function(){
                   app3.modal_cards.push($(this).prop("checked"));
               });
               socket.emit('answer',app3.modal_cards);
           }
-          else if(app3.modal_from === 'hand'
-          || app3.modal_from === 'kingdom'
-          || app3.modal_from === 'supply'
-          || app3.modal_from === 'basic'){
+          else if(app3.modal_area === 'hand'
+          || app3.modal_area === 'kingdom'
+          || app3.modal_area === 'supply'
+          || app3.modal_area === 'basic'){
             socket.emit('answer',app3.modal_cards);
-            if(app3.modal_from === 'hand'){
+            if(app3.modal_area === 'hand'){
               app3.modal_cards.forEach( (i) => {
                 app3.myHand[i].chosen = false;
               });
@@ -135,7 +147,57 @@ var app3 = new Vue({
           }
           $('#askModal').css('display','none');
           $('.backdrop').css('display','none');
-        }
+        },
+        cssGenerate: (place, card, index) => {
+          let ret = '';
+          if(app3.asking
+          && (card.chosen)){
+            ret += 'chosen ';
+          }
+
+          if(app3.asking
+          && !(card.chosen)
+          && (app3.modal_area === place || (app3.modal_area === 'kingdom' && place !== 'hand'))
+          && (typeof(app3.modal_filter) === 'undefined'
+              || typeof(app3.modal_filter[place][index]) === 'undefined'
+              || app3.modal_filter[place][index])){
+            ret += 'selectable ';
+          }
+
+          if(place === 'basic' || place === 'supply'){
+              if(app3.asking ||((app3.nowPlayer == username)
+              && (card.cost <= app3.nowMoney)
+              && (app3.nowStage === 'Buy')
+              && (app3.nowBuy > 0)
+              && app3[place + "Remain"][index] > 0)){
+                ret += 'cardActive ';
+              }
+              if(place === 'basic'){
+                  return 'basicCard ' + ret;
+              }
+             if(place === 'supply'){
+                ret += 'cards img-responsive col-xs-2 col-sm-2 col-md-2 col-lg-2 ';
+                return ret;
+              }
+          }
+           if(place === 'hand'){
+             if(app3.asking || ((app3.nowPlayer == username)
+             && ((app3.nowStage == 'Buy') && (card.types.includes('资源'))
+                ||　(app3.nowStage == 'Action') && (card.types.includes('行动'))))){
+                 ret += 'cardActive ';
+             }
+             return 'CardInHand ' + ret;
+           }
+        },
+        buttonAvailable: () => {
+            return app3.modal_cards.length < app3.modal_min && jQuery('.selectable').length > 0;
+        },
+        choiceAvailable: () => {
+            return (app3.modal_max <= $(".panel-body").find("input[type ='checkbox']")
+                                    .map(e => {$(e).prop("checked");})
+                                    .filter(e => e)
+                                    .length);
+        },
     },
     updated: function(){
         this.bind();
@@ -144,9 +206,14 @@ var app3 = new Vue({
 
 
 socket.on('statusUpdate', (data) =>{
+  console.log('get');
+  console.log(data.nowBuy);
+  
+  console.log(app3.nowBuy);
+  console.log(app3.nowStage);
+  console.log(data.nowStage);
     app3.supplyRemain = data.supplyRemain || app3.supplyRemain ;
     app3.basicRemain = data.basicRemain || app3.basicRemain;
-    console.log(data.usersName);
     if(data.usersName){
         data.userPoint = changePlace(data.userPoint, data.usersName, username);
         data.usersName = changePlace(data.usersName, data.usersName, username);
@@ -154,16 +221,16 @@ socket.on('statusUpdate', (data) =>{
         data.userPoint.shift();
         data.usersName.shift();
     }
-    console.log(data.usersName);
     app3.otherName = data.usersName === undefined ? app3.otherName : data.usersName;
-    console.log(app3.otherName);
     app3.otherPoint = data.userPoint === undefined ? app3.otherPoint : data.userPoint;
     app3.nowAction = data.nowAction === undefined ? app3.nowAction : data.nowAction;
     app3.nowCard = data.nowCard === undefined ? app3.nowCard : data.nowCard;
     app3.nowMoney = data.nowMoney === undefined ? app3.nowMoney : data.nowMoney;
     app3.nowBuy = data.nowBuy === undefined ? app3.nowBuy : data.nowBuy;
     app3.nowPlayer = data.nowPlayer === undefined ? app3.nowPlayer : data.nowPlayer;
+    
     app3.nowStage = data.nowStage === undefined ? app3.nowStage : data.nowStage;
+    
     app3.myDrop = data.drops === undefined ? app3.myDrop : data.drops;
     app3.myHand = data.hand === undefined ? app3.myHand : data.hand ;
     app3.myCardLength = data.cardsLength === undefined ? app3.myCardLength : data.cardsLength ;
@@ -171,17 +238,30 @@ socket.on('statusUpdate', (data) =>{
 
     if(data.usingCard){
         app3.cardInAction.push(data.usingCard);
-        addMessage(`${app3.nowPlayer} 使用了 ${data.usingCard.chname}`, 'rep');
+        addMessage(`${app3.nowPlayer} 使用了 ${data.usingCard.name[app3.la]}`, 'rep');
     }
 
     if(data.nowVp){
         if(app3.nowPlayer === username){
             app3.myPoint = data.nowVp;
+            app3.nowDuration = data.nowDuration;
         }
         else{
             app3.otherPoint[app3.otherName.indexOf(app3.nowPlayer)] = data.nowVp;
+            app3.otherDuration[app3.otherName.indexOf(app3.nowPlayer)] = data.nowDuration;
+
         }
     }
+    if(data.myVp) {
+        app3.myPoint = data.myVp;
+        app3.nowDuration = data.nowDuration;
+    }
+    if(data.otherVp){
+      app3.otherPoint[app3.otherName.indexOf(data.oneName)] = data.otherVp;
+      app3.otherDuration[app3.otherName.indexOf(data.oneName)] = data.nowDuration;
+    }
+
+
     if(data.nowStage !== undefined){
       if(data.nowStage !== addedStage){
           if(data.nowStage === 'Action'){
@@ -189,17 +269,19 @@ socket.on('statusUpdate', (data) =>{
           }
           addMessage(`　${app3.nowStage}阶段`,'rep');
           addedStage = data.nowStage;
+          app3.freshed = false;
       }
 
-      if(app3.nowPlayer === username){
+      if(app3.nowPlayer === username && data.fresh === undefined){
+          
           if(app3.nowStage === 'Action' && !app3.aCardUsing){
               if(app3.nowAction === 0){
                   app3.nextStage();
                   return;
               }
               let action = 0;
-              for(let cardkey in app3.myHand){
-                  action += app3.myHand[cardkey].type === "行动" ? 1 : 0;
+              for(let card of app3.myHand){
+                  action += card.types.includes("行动") ? 1 : 0;
               }
               if(action === 0){
                   app3.nextStage();
@@ -226,20 +308,17 @@ socket.on('statusUpdate', (data) =>{
 socket.on('ask', (data) =>{
    app3.modal_title = data.title;
    app3.modal_content = data.content;
-   app3.modal_amount = data.amount;
-   app3.modal_from = data.from;
-   app3.modal_cost = data.cost;
-   app3.modal_choices = data.choices;//{src,index}
+   app3.modal_area = data.area;
+   app3.modal_min = data.min;
+   app3.modal_max = data.max;
+   app3.modal_filter = data.myFilter;//{src,index}
+   app3.asking = true;
+   console.log(data);
+   var p = data;
    app3.modal_cards = [];
    $('#askModal').css('display','');
-   if(data.from === 'kingdom' || data.from === 'supply' || data.from === 'basic'){
+   if(data.area === 'kingdom' || data.area === 'supply' || data.area === 'basic'){
      $("#askModal").css("top","70%");
-     app3.modal_choices = {};
-     for(let info in data.choices){
-       if(app3.modal_choices[info.src] === undefined)
-          app3.modal_choices[info.src] = [];
-       app3.modal_choices[info.src][info.index] = true;
-     }
    }
    else{
      $("#askModal").css("top","");
@@ -255,7 +334,7 @@ socket.on('sendRep', (data) => {
 socket.on('end game',() => {
     console.log('end game');
     var wined = true;
-    for(otpkey in app3.otherPoint){
+    for(let otpkey in app3.otherPoint){
         if (app3.otherPoint[otpkey] > app3.myPoint) wined = false;
     }
     if(wined){
@@ -264,4 +343,5 @@ socket.on('end game',() => {
     else {
         addMessage("you lose!",'announce','info');
     }
+    host = '';
 });
